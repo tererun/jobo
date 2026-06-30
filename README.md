@@ -59,18 +59,18 @@ The _jōbō_ system was an urban plan used in ancient Japanese capitals (Heijō-
 
 1. Open the **Jobo** icon in the Activity Bar to reveal the **Connections** view.
 2. Click **＋ (Add Connection)** in the view title, or **Add Connection** in the welcome view.
-3. Follow the input prompts:
-   - **Connection name** - display name (required)
-   - **Database driver** - PostgreSQL / MySQL / MariaDB / SQLite
+3. A **connection form** opens in an editor tab. Fill it in and click **Add Connection** / **Save Changes**:
+   - **Name** - display name (required)
+   - **Driver** - PostgreSQL / MySQL / MariaDB / SQLite (the form adapts to the selection)
    - **SQLite** - enter the path to the database file
-   - **PostgreSQL / MySQL** - Host / Port / Database / User / Password / SSL, then whether to use an SSH tunnel
+   - **PostgreSQL / MySQL** - Host / Port / Database / User / Password / SSL, plus an optional SSH tunnel section
 4. Secrets (passwords, passphrases) are stored in VS Code **SecretStorage**. Everything else is stored under `jobo.connections` in `settings.json`.
 
 Right-click a connection node for **Connect / Disconnect / Edit / Delete**. Expand a connected node to browse databases, schemas, tables, and columns.
 
 ### 2. Configure an SSH tunnel
 
-When adding a connection, answer **Yes** to "Connect through an SSH tunnel?" to enter SSH settings.
+In the connection form, tick **Connect through an SSH tunnel** to reveal the SSH settings.
 
 - **Using `configHost` (a `~/.ssh/config` alias)** - enter a `Host` name from `~/.ssh/config`. Missing fields (`HostName` / `User` / `Port` / `IdentityFile` / `ProxyJump`) are resolved automatically; anything you type overrides the config value. Toggle resolution with the `jobo.useSshConfig` setting (default `true`).
 - **Manual** - leave `configHost` empty and enter SSH host / port / user / identity file / password / passphrase directly.

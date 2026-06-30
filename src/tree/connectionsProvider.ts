@@ -19,10 +19,10 @@
  */
 
 import * as vscode from "vscode";
-import { randomUUID } from "node:crypto";
 import type { ConnectionManager } from "../connections/manager";
-import type { ConnectionConfig, ConnectionSecrets } from "../connections/types";
+import type { ConnectionConfig } from "../connections/types";
 import type { DriverKind, JoboDriver, TableRef } from "../drivers/driver";
+import { openConnectionForm } from "../webview/connectionForm";
 
 type NodeType =
   | "connection"
@@ -353,14 +353,10 @@ export function registerConnectionsTree(
   context.subscriptions.push(
     vscode.commands.registerCommand("jobo.refresh", () => provider.refresh()),
 
-    vscode.commands.registerCommand("jobo.addConnection", async () => {
-      const result = await promptConnection(manager);
-      if (!result) {
-        return;
-      }
-      await manager.saveConnection(result.config);
-      await manager.setSecrets(result.config.id, result.secrets);
-      provider.refresh();
+    vscode.commands.registerCommand("jobo.addConnection", () => {
+      openConnectionForm(context, manager, {
+        onSaved: () => provider.refresh(),
+      });
     }),
 
     vscode.commands.registerCommand(
@@ -375,13 +371,11 @@ export function registerConnectionsTree(
           return;
         }
         const secrets = await manager.getSecrets(id);
-        const result = await promptConnection(manager, existing, secrets);
-        if (!result) {
-          return;
-        }
-        await manager.saveConnection(result.config);
-        await manager.setSecrets(result.config.id, result.secrets);
-        provider.refresh();
+        openConnectionForm(context, manager, {
+          existing,
+          existingSecrets: secrets,
+          onSaved: () => provider.refresh(),
+        });
       }
     ),
 
@@ -445,232 +439,4 @@ export function registerConnectionsTree(
       }
     )
   );
-}
-
-// --- Add/Edit connection prompt flow --------------------------------------
-
-interface PromptResult {
-  config: ConnectionConfig;
-  secrets: ConnectionSecrets;
-}
-
-async function promptConnection(
-  _manager: ConnectionManager,
-  existing?: ConnectionConfig,
-  existingSecrets?: ConnectionSecrets
-): Promise<PromptResult | undefined> {
-  const name = await vscode.window.showInputBox({
-    title: "Connection name",
-    value: existing?.name ?? "",
-    validateInput: (v) => (v.trim() === "" ? "Name is required" : undefined),
-  });
-  if (name === undefined) {
-    return undefined;
-  }
-
-  const driver = await pickDriver(existing?.driver);
-  if (!driver) {
-    return undefined;
-  }
-
-  const config: ConnectionConfig = {
-    id: existing?.id ?? randomUUID(),
-    name: name.trim(),
-    driver,
-  };
-  const secrets: ConnectionSecrets = { ...existingSecrets };
-
-  if (driver === "sqlite") {
-    const file = await vscode.window.showInputBox({
-      title: "SQLite database file path",
-      value: existing?.file ?? "",
-      validateInput: (v) =>
-        v.trim() === "" ? "File path is required" : undefined,
-    });
-    if (file === undefined) {
-      return undefined;
-    }
-    config.file = file.trim();
-    return { config, secrets };
-  }
-
-  const host = await vscode.window.showInputBox({
-    title: "Host",
-    value: existing?.host ?? "localhost",
-  });
-  if (host === undefined) {
-    return undefined;
-  }
-  config.host = host.trim() || "localhost";
-
-  const defaultPort = driver === "postgres" ? "5432" : "3306";
-  const portStr = await vscode.window.showInputBox({
-    title: "Port",
-    value: existing?.port ? String(existing.port) : defaultPort,
-    validateInput: (v) =>
-      v.trim() === "" || Number.isFinite(Number(v))
-        ? undefined
-        : "Port must be a number",
-  });
-  if (portStr === undefined) {
-    return undefined;
-  }
-  config.port = Number(portStr) || Number(defaultPort);
-
-  const database = await vscode.window.showInputBox({
-    title: "Database",
-    value: existing?.database ?? "",
-  });
-  if (database === undefined) {
-    return undefined;
-  }
-  config.database = database.trim() || undefined;
-
-  const user = await vscode.window.showInputBox({
-    title: "User",
-    value: existing?.user ?? "",
-  });
-  if (user === undefined) {
-    return undefined;
-  }
-  config.user = user.trim() || undefined;
-
-  const password = await vscode.window.showInputBox({
-    title: "Password",
-    password: true,
-    value: existingSecrets?.password ?? "",
-    prompt: "Stored securely in SecretStorage. Leave blank for none.",
-  });
-  if (password === undefined) {
-    return undefined;
-  }
-  secrets.password = password === "" ? undefined : password;
-
-  const ssl = await vscode.window.showQuickPick(["No", "Yes"], {
-    title: "Use SSL?",
-    placeHolder: existing?.ssl ? "Currently: Yes" : "Currently: No",
-  });
-  if (ssl === undefined) {
-    return undefined;
-  }
-  config.ssl = ssl === "Yes";
-
-  const useSsh = await vscode.window.showQuickPick(["No", "Yes"], {
-    title: "Connect through an SSH tunnel?",
-    placeHolder: existing?.ssh ? "Currently: Yes" : "Currently: No",
-  });
-  if (useSsh === undefined) {
-    return undefined;
-  }
-  if (useSsh === "Yes") {
-    const ssh = await promptSsh(existing, existingSecrets, secrets);
-    if (ssh === undefined) {
-      return undefined;
-    }
-    config.ssh = ssh;
-  }
-
-  return { config, secrets };
-}
-
-async function pickDriver(
-  current?: DriverKind
-): Promise<DriverKind | undefined> {
-  const picked = await vscode.window.showQuickPick(
-    [
-      { label: "PostgreSQL", value: "postgres" as DriverKind },
-      { label: "MySQL / MariaDB", value: "mysql" as DriverKind },
-      { label: "SQLite", value: "sqlite" as DriverKind },
-    ],
-    {
-      title: "Database driver",
-      placeHolder: current ? `Currently: ${current}` : undefined,
-    }
-  );
-  return picked?.value;
-}
-
-async function promptSsh(
-  existing: ConnectionConfig | undefined,
-  existingSecrets: ConnectionSecrets | undefined,
-  secrets: ConnectionSecrets
-): Promise<ConnectionConfig["ssh"] | undefined> {
-  const configHost = await vscode.window.showInputBox({
-    title: "SSH config host (~/.ssh/config alias)",
-    value: existing?.ssh?.configHost ?? "",
-    prompt: "Optional. Missing fields below are filled from ~/.ssh/config.",
-  });
-  if (configHost === undefined) {
-    return undefined;
-  }
-
-  const sshHost = await vscode.window.showInputBox({
-    title: "SSH host",
-    value: existing?.ssh?.host ?? "",
-    prompt: configHost.trim() ? "Optional (overrides ~/.ssh/config)" : "Required",
-  });
-  if (sshHost === undefined) {
-    return undefined;
-  }
-
-  const sshPortStr = await vscode.window.showInputBox({
-    title: "SSH port",
-    value: existing?.ssh?.port ? String(existing.ssh.port) : "",
-    prompt: "Optional (default 22)",
-    validateInput: (v) =>
-      v.trim() === "" || Number.isFinite(Number(v))
-        ? undefined
-        : "Port must be a number",
-  });
-  if (sshPortStr === undefined) {
-    return undefined;
-  }
-
-  const sshUser = await vscode.window.showInputBox({
-    title: "SSH user",
-    value: existing?.ssh?.user ?? "",
-    prompt: "Optional (overrides ~/.ssh/config)",
-  });
-  if (sshUser === undefined) {
-    return undefined;
-  }
-
-  const identityFile = await vscode.window.showInputBox({
-    title: "SSH identity file (private key path)",
-    value: existing?.ssh?.identityFile ?? "",
-    prompt: "Optional (overrides ~/.ssh/config)",
-  });
-  if (identityFile === undefined) {
-    return undefined;
-  }
-
-  const sshPassword = await vscode.window.showInputBox({
-    title: "SSH password",
-    password: true,
-    value: existingSecrets?.sshPassword ?? "",
-    prompt: "Optional. Stored securely. Leave blank to use key auth.",
-  });
-  if (sshPassword === undefined) {
-    return undefined;
-  }
-  secrets.sshPassword = sshPassword === "" ? undefined : sshPassword;
-
-  const sshPassphrase = await vscode.window.showInputBox({
-    title: "SSH key passphrase",
-    password: true,
-    value: existingSecrets?.sshPassphrase ?? "",
-    prompt: "Optional. Stored securely. For an encrypted private key.",
-  });
-  if (sshPassphrase === undefined) {
-    return undefined;
-  }
-  secrets.sshPassphrase = sshPassphrase === "" ? undefined : sshPassphrase;
-
-  return {
-    configHost: configHost.trim() || undefined,
-    host: sshHost.trim() || undefined,
-    port: sshPortStr.trim() ? Number(sshPortStr) : undefined,
-    user: sshUser.trim() || undefined,
-    identityFile: identityFile.trim() || undefined,
-  };
 }
