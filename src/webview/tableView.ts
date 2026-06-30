@@ -371,6 +371,7 @@ class TableViewPanel {
   <div class="jobo-scroll">
     <div id="grid"></div>
   </div>
+  <div class="jobo-pager" id="pager"></div>
 
   <div class="jobo-modal-backdrop" id="modal-backdrop">
     <div class="jobo-modal" role="dialog" aria-modal="true">

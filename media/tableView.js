@@ -54,7 +54,14 @@
     /** @type {string|null} */
     error: null,
     busy: false,
+    /** 0-based current page index */
+    page: 0,
+    /** rows per page; 0 means "show all" */
+    pageSize: 100,
   };
+
+  /** Page-size choices offered in the pager (0 = All). */
+  const PAGE_SIZES = [50, 100, 200, 500, 0];
 
   // --- DOM refs ----------------------------------------------------------
   const el = {
@@ -64,6 +71,7 @@
     execute: document.getElementById("execute"),
     status: document.getElementById("status"),
     grid: document.getElementById("grid"),
+    pager: document.getElementById("pager"),
     modalBackdrop: document.getElementById("modal-backdrop"),
     modalBody: document.getElementById("modal-body"),
     modalSub: document.getElementById("modal-sub"),
@@ -121,6 +129,7 @@
     state.sortCol = null;
     state.sortDir = "asc";
     state.nextKey = 1;
+    state.page = 0;
     state.rows = (payload.rows || []).map((cells) => ({
       key: state.nextKey++,
       original: cells.slice(),
@@ -201,12 +210,51 @@
     return n;
   }
 
+  // --- Pagination helpers -----------------------------------------------
+
+  function effectivePageSize() {
+    return state.pageSize > 0 ? state.pageSize : state.order.length || 1;
+  }
+
+  function pageCount() {
+    if (state.pageSize <= 0) return 1;
+    return Math.max(1, Math.ceil(state.order.length / state.pageSize));
+  }
+
+  function clampPage() {
+    const last = pageCount() - 1;
+    if (state.page > last) state.page = last;
+    if (state.page < 0) state.page = 0;
+  }
+
+  /** Indexes into state.order that belong to the current page. */
+  function pageOrder() {
+    clampPage();
+    if (state.pageSize <= 0) return state.order;
+    const start = state.page * state.pageSize;
+    return state.order.slice(start, start + state.pageSize);
+  }
+
+  function gotoPage(page) {
+    state.page = page;
+    clampPage();
+    render();
+  }
+
+  /** Scroll/flip to whichever page contains the row at the given order index. */
+  function revealOrderIndex(orderIdx) {
+    if (orderIdx < 0 || state.pageSize <= 0) return;
+    state.page = Math.floor(orderIdx / state.pageSize);
+    clampPage();
+  }
+
   // --- Rendering ---------------------------------------------------------
 
   function render() {
     renderToolbar();
     renderStatus();
     renderGrid();
+    renderPager();
   }
 
   function renderToolbar() {
@@ -303,7 +351,10 @@
 
     // Body
     const tbody = document.createElement("tbody");
-    state.order.forEach((rowIdx, displayIdx) => {
+    const visible = pageOrder();
+    const base = state.pageSize > 0 ? state.page * state.pageSize : 0;
+    visible.forEach((rowIdx, i) => {
+      const displayIdx = base + i;
       const row = state.rows[rowIdx];
       const tr = document.createElement("tr");
       if (row.isNew) tr.classList.add("jobo-row--new");
@@ -356,6 +407,84 @@
     });
     table.appendChild(tbody);
     el.grid.appendChild(table);
+  }
+
+  function renderPager() {
+    el.pager.replaceChildren();
+    const total = state.order.length;
+    if (total === 0) {
+      return;
+    }
+    clampPage();
+
+    const pages = pageCount();
+    const showingAll = state.pageSize <= 0;
+    const start = showingAll ? 0 : state.page * state.pageSize;
+    const end = showingAll ? total : Math.min(total, start + state.pageSize);
+
+    // Page-size selector.
+    const sizeWrap = document.createElement("label");
+    sizeWrap.className = "jobo-pager__size";
+    sizeWrap.textContent = "Rows/page: ";
+    const select = document.createElement("select");
+    PAGE_SIZES.forEach((size) => {
+      const opt = document.createElement("option");
+      opt.value = String(size);
+      opt.textContent = size === 0 ? "All" : String(size);
+      if (size === state.pageSize) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener("change", () => {
+      const next = Number(select.value);
+      // Keep the first currently-visible row in view after resizing.
+      const anchor = showingAll ? 0 : state.page * state.pageSize;
+      state.pageSize = next;
+      state.page = next > 0 ? Math.floor(anchor / next) : 0;
+      render();
+    });
+    sizeWrap.appendChild(select);
+    el.pager.appendChild(sizeWrap);
+
+    // Range label.
+    const info = document.createElement("span");
+    info.className = "jobo-pager__info";
+    info.textContent = `${start + 1}–${end} of ${total}`;
+    el.pager.appendChild(info);
+
+    // Navigation buttons (hidden when everything fits on one page).
+    if (!showingAll && pages > 1) {
+      const nav = document.createElement("div");
+      nav.className = "jobo-pager__nav";
+
+      const mkBtn = (label, title, page, disabled) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "jobo-btn jobo-btn--secondary jobo-pager__btn";
+        b.textContent = label;
+        b.title = title;
+        b.disabled = disabled;
+        if (!disabled) b.addEventListener("click", () => gotoPage(page));
+        return b;
+      };
+
+      nav.appendChild(mkBtn("«", "First page", 0, state.page === 0));
+      nav.appendChild(
+        mkBtn("‹", "Previous page", state.page - 1, state.page === 0)
+      );
+
+      const pageLabel = document.createElement("span");
+      pageLabel.className = "jobo-pager__page";
+      pageLabel.textContent = `Page ${state.page + 1} / ${pages}`;
+      nav.appendChild(pageLabel);
+
+      nav.appendChild(
+        mkBtn("›", "Next page", state.page + 1, state.page >= pages - 1)
+      );
+      nav.appendChild(
+        mkBtn("»", "Last page", pages - 1, state.page >= pages - 1)
+      );
+      el.pager.appendChild(nav);
+    }
   }
 
   function canEditCell(row, col) {
@@ -495,6 +624,7 @@
 
   function addRow() {
     const cells = state.columns.map(() => null);
+    const newIdx = state.rows.length;
     state.rows.push({
       key: state.nextKey++,
       original: cells.slice(),
@@ -504,6 +634,8 @@
       changedCols: new Set(),
     });
     rebuildOrder();
+    // Flip to whichever page now contains the freshly added row.
+    revealOrderIndex(state.order.indexOf(newIdx));
     render();
   }
 
@@ -519,6 +651,7 @@
       state.sortDir = "asc";
     }
     rebuildOrder();
+    state.page = 0;
     render();
   }
 
