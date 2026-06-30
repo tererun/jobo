@@ -39,22 +39,28 @@
     pkSet: new Set(),
     editable: false,
     table: { schema: undefined, name: "" },
-    rowCount: 0,
     durationMs: 0,
-    limit: 0,
-    /** @type {RowModel[]} */
+    /** Page size (rows fetched per page) — mirrors the host LIMIT. */
+    limit: 100,
+    /** Total rows for paging (exact or estimated). */
+    total: 0,
+    totalExact: true,
+    /** Row offset of the first row on the current page. */
+    offset: 0,
+    /** @type {RowModel[]} rows of the CURRENT page only */
     rows: [],
-    /** @type {number|null} */
+    /** @type {number|null} index of the server-sorted column */
     sortCol: null,
     /** @type {"asc"|"desc"} */
     sortDir: "asc",
-    /** @type {number[]} display order (indexes into state.rows) */
-    order: [],
     nextKey: 1,
     /** @type {string|null} */
     error: null,
     busy: false,
   };
+
+  /** Page-size choices offered in the pager. */
+  const PAGE_SIZES = [50, 100, 200, 500, 1000];
 
   // --- DOM refs ----------------------------------------------------------
   const el = {
@@ -64,6 +70,7 @@
     execute: document.getElementById("execute"),
     status: document.getElementById("status"),
     grid: document.getElementById("grid"),
+    pager: document.getElementById("pager"),
     modalBackdrop: document.getElementById("modal-backdrop"),
     modalBody: document.getElementById("modal-body"),
     modalSub: document.getElementById("modal-sub"),
@@ -94,17 +101,6 @@
     return String(v);
   }
 
-  function compareValues(a, b) {
-    if (a === b) return 0;
-    if (isNullish(a)) return -1;
-    if (isNullish(b)) return 1;
-    if (typeof a === "number" && typeof b === "number") return a - b;
-    const na = Number(a);
-    const nb = Number(b);
-    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-    return String(a).localeCompare(String(b));
-  }
-
   // --- State transitions -------------------------------------------------
 
   function setData(payload) {
@@ -113,14 +109,25 @@
     state.pkSet = new Set(state.primaryKeys);
     state.editable = !!payload.editable;
     state.table = payload.table || state.table;
-    state.rowCount = payload.rowCount || 0;
     state.durationMs = payload.durationMs || 0;
+    state.total = payload.total || 0;
+    state.totalExact = payload.totalExact !== false;
+    state.offset = payload.offset || 0;
     state.limit = payload.limit || state.limit;
     state.error = null;
     state.busy = false;
-    state.sortCol = null;
-    state.sortDir = "asc";
     state.nextKey = 1;
+
+    // Reflect the server-side sort back onto the clicked-header indicator.
+    if (payload.sort && payload.sort.col) {
+      const idx = state.columns.findIndex((c) => c.name === payload.sort.col);
+      state.sortCol = idx >= 0 ? idx : null;
+      state.sortDir = payload.sort.dir === "desc" ? "desc" : "asc";
+    } else {
+      state.sortCol = null;
+      state.sortDir = "asc";
+    }
+
     state.rows = (payload.rows || []).map((cells) => ({
       key: state.nextKey++,
       original: cells.slice(),
@@ -129,20 +136,29 @@
       isDeleted: false,
       changedCols: new Set(),
     }));
-    rebuildOrder();
     render();
   }
 
-  function rebuildOrder() {
-    state.order = state.rows.map((_, i) => i);
-    if (state.sortCol !== null) {
-      const col = state.sortCol;
-      const dir = state.sortDir === "asc" ? 1 : -1;
-      state.order.sort((ia, ib) => {
-        const cmp = compareValues(state.rows[ia].cells[col], state.rows[ib].cells[col]);
-        return cmp !== 0 ? cmp * dir : ia - ib;
-      });
-    }
+  /** Build the {col, dir} sort message the host understands, or null. */
+  function currentSort() {
+    if (state.sortCol === null || !state.columns[state.sortCol]) return null;
+    return { col: state.columns[state.sortCol].name, dir: state.sortDir };
+  }
+
+  /**
+   * Ask the host for a (possibly different) page/sort window. Overrides default
+   * to the current view, so callers only pass what changes.
+   */
+  function requestView(next) {
+    const opts = next || {};
+    const offset = opts.offset !== undefined ? Math.max(0, opts.offset) : state.offset;
+    const limit = opts.limit !== undefined ? opts.limit : state.limit;
+    const sort = opts.sort !== undefined ? opts.sort : currentSort();
+    state.busy = true;
+    state.error = null;
+    renderToolbar();
+    renderPager();
+    vscode.postMessage({ type: "view", offset, limit, sort });
   }
 
   function pendingChanges() {
@@ -201,12 +217,37 @@
     return n;
   }
 
+  // --- Pagination helpers (server-driven) -------------------------------
+
+  /** Total number of pages, based on the server-reported row count. */
+  function pageCount() {
+    return Math.max(1, Math.ceil(state.total / state.limit));
+  }
+
+  /** 0-based index of the current page. */
+  function currentPage() {
+    return Math.floor(state.offset / state.limit);
+  }
+
+  /** Navigate to a page by fetching it from the host. */
+  function gotoPage(page) {
+    if (state.busy || hasPending()) return;
+    const target = Math.max(0, Math.min(page, pageCount() - 1));
+    requestView({ offset: target * state.limit });
+  }
+
+  /** True when the user has unsaved edits that paging would discard. */
+  function hasPending() {
+    return pendingCount() > 0;
+  }
+
   // --- Rendering ---------------------------------------------------------
 
   function render() {
     renderToolbar();
     renderStatus();
     renderGrid();
+    renderPager();
   }
 
   function renderToolbar() {
@@ -223,15 +264,17 @@
 
   function renderStatus() {
     const parts = [];
-    const shown = state.rows.filter((r) => !r.isDeleted).length;
     parts.push(
       `<span>Table <strong>${escapeHtml(state.table.name)}</strong></span>`
     );
     parts.push(
-      `<span>${shown} rows shown${
-        state.limit ? ` (up to ${state.limit})` : ""
-      } · ${state.durationMs} ms</span>`
+      `<span>${state.totalExact ? "" : "~"}${state.total} rows total · ${state.durationMs} ms</span>`
     );
+    if (!state.totalExact) {
+      parts.push(
+        `<span class="jobo-status__pending">Row count is approximate (catalog estimate)</span>`
+      );
+    }
     const count = pendingCount();
     if (count > 0) {
       parts.push(
@@ -289,8 +332,16 @@
         sort.textContent = state.sortDir === "asc" ? "▲" : "▼";
       }
       th.appendChild(sort);
-      th.title = `Sort by ${col.name}`;
-      th.addEventListener("click", () => toggleSort(idx));
+      // Sorting re-queries the whole table; block it while edits are pending.
+      if (state.busy || hasPending()) {
+        th.classList.add("jobo-th--locked");
+        th.title = hasPending()
+          ? "Execute or Reload pending changes before sorting"
+          : "Loading…";
+      } else {
+        th.title = `Sort by ${col.name}`;
+        th.addEventListener("click", () => toggleSort(idx));
+      }
       htr.appendChild(th);
     });
 
@@ -301,10 +352,10 @@
     thead.appendChild(htr);
     table.appendChild(thead);
 
-    // Body
+    // Body — rows of the current page only; numbering reflects the global offset.
     const tbody = document.createElement("tbody");
-    state.order.forEach((rowIdx, displayIdx) => {
-      const row = state.rows[rowIdx];
+    let rowNo = state.offset;
+    state.rows.forEach((row) => {
       const tr = document.createElement("tr");
       if (row.isNew) tr.classList.add("jobo-row--new");
       if (row.isDeleted) tr.classList.add("jobo-row--deleted");
@@ -315,7 +366,7 @@
 
       const num = document.createElement("td");
       num.className = "jobo-rownum";
-        num.textContent = row.isNew ? "+" : String(displayIdx + 1);
+      num.textContent = row.isNew ? "+" : String(++rowNo);
       tr.appendChild(num);
 
       state.columns.forEach((col, colIdx) => {
@@ -356,6 +407,92 @@
     });
     table.appendChild(tbody);
     el.grid.appendChild(table);
+  }
+
+  function renderPager() {
+    el.pager.replaceChildren();
+    if (state.columns.length === 0) {
+      return;
+    }
+
+    const pages = pageCount();
+    const page = currentPage();
+    const pending = hasPending();
+    // Any control that would re-fetch is locked while busy or while edits are
+    // pending (paging away would silently drop those edits).
+    const locked = state.busy || pending;
+
+    // Page-size selector.
+    const sizeWrap = document.createElement("label");
+    sizeWrap.className = "jobo-pager__size";
+    sizeWrap.textContent = "Rows/page: ";
+    const select = document.createElement("select");
+    select.disabled = locked;
+    const sizes = PAGE_SIZES.includes(state.limit)
+      ? PAGE_SIZES
+      : [state.limit, ...PAGE_SIZES].sort((a, b) => a - b);
+    sizes.forEach((size) => {
+      const opt = document.createElement("option");
+      opt.value = String(size);
+      opt.textContent = String(size);
+      if (size === state.limit) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener("change", () => {
+      const next = Number(select.value);
+      // Keep the current first row visible by recomputing the offset.
+      const anchor = state.offset;
+      requestView({ limit: next, offset: Math.floor(anchor / next) * next });
+    });
+    sizeWrap.appendChild(select);
+    el.pager.appendChild(sizeWrap);
+
+    // Range label (1-based, inclusive).
+    const start = state.total === 0 ? 0 : state.offset + 1;
+    const end = Math.min(state.total, state.offset + state.rows.length);
+    const info = document.createElement("span");
+    info.className = "jobo-pager__info";
+    info.textContent = `${start}–${end} of ${state.total}`;
+    el.pager.appendChild(info);
+
+    // Hint shown when navigation is blocked by pending edits.
+    if (pending) {
+      const hint = document.createElement("span");
+      hint.className = "jobo-pager__hint";
+      hint.textContent = "Execute or Reload to change page";
+      el.pager.appendChild(hint);
+    }
+
+    // Navigation buttons.
+    const nav = document.createElement("div");
+    nav.className = "jobo-pager__nav";
+
+    const mkBtn = (label, title, targetPage, disabled) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "jobo-btn jobo-btn--secondary jobo-pager__btn";
+      b.textContent = label;
+      b.title = title;
+      b.disabled = disabled;
+      if (!disabled) b.addEventListener("click", () => gotoPage(targetPage));
+      return b;
+    };
+
+    nav.appendChild(mkBtn("«", "First page", 0, locked || page === 0));
+    nav.appendChild(mkBtn("‹", "Previous page", page - 1, locked || page === 0));
+
+    const pageLabel = document.createElement("span");
+    pageLabel.className = "jobo-pager__page";
+    pageLabel.textContent = `Page ${page + 1} / ${pages}`;
+    nav.appendChild(pageLabel);
+
+    nav.appendChild(
+      mkBtn("›", "Next page", page + 1, locked || page >= pages - 1)
+    );
+    nav.appendChild(
+      mkBtn("»", "Last page", pages - 1, locked || page >= pages - 1)
+    );
+    el.pager.appendChild(nav);
   }
 
   function canEditCell(row, col) {
@@ -495,6 +632,8 @@
 
   function addRow() {
     const cells = state.columns.map(() => null);
+    // New rows are appended to the bottom of the current page; they live only on
+    // the client until committed, so no re-fetch is needed.
     state.rows.push({
       key: state.nextKey++,
       original: cells.slice(),
@@ -503,23 +642,21 @@
       isDeleted: false,
       changedCols: new Set(),
     });
-    rebuildOrder();
     render();
   }
 
   function toggleSort(col) {
+    // Sorting is server-side; reset to the first page and re-query.
+    if (state.busy || hasPending()) return;
+    let nextSort;
     if (state.sortCol === col) {
-      if (state.sortDir === "asc") {
-        state.sortDir = "desc";
-      } else {
-        state.sortCol = null;
-      }
+      nextSort = state.sortDir === "asc"
+        ? { col: state.columns[col].name, dir: "desc" }
+        : null;
     } else {
-      state.sortCol = col;
-      state.sortDir = "asc";
+      nextSort = { col: state.columns[col].name, dir: "asc" };
     }
-    rebuildOrder();
-    render();
+    requestView({ offset: 0, sort: nextSort });
   }
 
   // --- Two-step Execute flow --------------------------------------------
@@ -613,10 +750,8 @@
 
   el.addRow.addEventListener("click", addRow);
   el.reload.addEventListener("click", () => {
-    state.busy = true;
-    state.error = null;
-    renderToolbar();
-    vscode.postMessage({ type: "reload" });
+    // Reload the current page/sort window; pending edits are discarded.
+    requestView({});
   });
   el.execute.addEventListener("click", requestPreview);
   el.modalExecute.addEventListener("click", confirmExecute);

@@ -40,4 +40,8 @@ export interface GridData {
   editable?: boolean;
   rowCount?: number;
   durationMs?: number;
+  /** True when a safety LIMIT was applied and more rows may exist. */
+  truncated?: boolean;
+  /** The LIMIT cap that was applied (notebook auto-limit). */
+  queryLimit?: number;
 }
