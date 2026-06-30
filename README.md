@@ -89,7 +89,7 @@ With the above, setting just `configHost = my-db-bastion` fills in host, user, k
 
 ### 3. Use the SQL notebook
 
-- **New** - run **Jobo: New SQL Notebook** from the Command Palette, or open a `.jobonb` / `.sql` file.
+- **New** - click the **notebook icon (New SQL Notebook)** in the **Connections** view title bar, run **Jobo: New SQL Notebook** from the Command Palette, or open a `.jobonb` / `.sql` file.
 - **Target connection** - the target connection is shown in the status bar (bottom-right). Click it (**Select Target Connection**) or use the plug icon in the notebook toolbar. Running a cell with no target prompts you to pick one.
 - **Run** - execute a `sql` code cell to query the target connection (it auto-connects if needed).
 - **Results** - `SELECT` results render in the **ward-grid** (`x-application/jobo-grid` renderer) with header-click sorting and paging. DML shows "N row(s) affected" plus timing, with a `text/plain` fallback.
