@@ -141,7 +141,7 @@ table.jobo-table {
 .jobo-table td {
   border-right: 1px solid var(--jobo-border);
   border-bottom: 1px solid var(--jobo-border);
-  padding: 3px 10px;
+  padding: 8px 14px;
   text-align: left;
   white-space: pre;
   vertical-align: top;
