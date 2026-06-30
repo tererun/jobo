@@ -120,7 +120,7 @@
       "view/item/context": [
         {
           "command": "jobo.connect",
-          "when": "view == jobo.connections && viewItem == connection-disconnected",
+          "when": "view == jobo.connections && (viewItem == connection-disconnected || viewItem == connection-error)",
           "group": "inline@1"
         },
         {
