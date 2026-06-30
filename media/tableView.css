@@ -163,6 +163,17 @@ button.jobo-pager__btn {
   white-space: nowrap;
 }
 
+.jobo-pager__hint {
+  color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+  white-space: nowrap;
+}
+
+/* A column header that can't be sorted right now (loading / pending edits). */
+.jobo-table thead th.jobo-th--locked {
+  cursor: default;
+  opacity: 0.6;
+}
+
 table.jobo-table {
   border-collapse: collapse;
   border-spacing: 0;
