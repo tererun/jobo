@@ -116,11 +116,60 @@ select {
   gap: 8px;
   cursor: pointer;
   font-weight: 400;
+  user-select: none;
 }
 
-.jobo-check input {
-  width: auto;
+.jobo-check input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
   margin: 0;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-content: center;
+  color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
+  background: var(--vscode-checkbox-background, var(--vscode-input-background));
+  border: 1px solid var(--vscode-checkbox-border, var(--jobo-border));
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.jobo-check input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform 0.12s ease-in-out;
+  background-color: currentColor;
+  clip-path: polygon(
+    14% 44%,
+    0 65%,
+    40% 100%,
+    100% 16%,
+    80% 0%,
+    43% 62%
+  );
+}
+
+.jobo-check input[type="checkbox"]:hover {
+  border-color: var(--vscode-focusBorder, var(--jobo-border));
+}
+
+.jobo-check input[type="checkbox"]:checked {
+  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background, var(--vscode-focusBorder));
+  border-color: var(--vscode-button-background, var(--vscode-focusBorder));
+}
+
+.jobo-check input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+.jobo-check input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
 }
 
 .jobo-fieldset {
