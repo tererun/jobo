@@ -97,10 +97,10 @@ With the above, setting just `configHost = my-db-bastion` fills in host, user, k
 
 ### 4. Editable table view & the two-step Execute flow
 
-Click a table in the tree (or its inline **table** icon) to open the table view webview.
+Click a table in the tree (or its inline **table** icon) to open the table view webview. There is no separate view/edit mode — the grid is **always editable**.
 
-- **View mode (default)** - runs `SELECT * FROM <table> LIMIT n` (`n` = `jobo.defaultQueryLimit`, default 200) and renders the ward-grid with sorting/paging.
-- **Edit mode**
+- **Loading** - runs `SELECT * FROM <table> LIMIT n` (`n` = `jobo.defaultQueryLimit`, default 200) and renders the ward-grid with sorting/paging.
+- **Editing**
   - Rows are identified by **primary keys** (`getPrimaryKeys`). Tables without a primary key allow inserts only.
   - **Double-click** a cell to edit, **+ Add Row** to append, or the trash button to **mark a row for deletion**.
   - Changes are not executed immediately - they accumulate as **pending changes** in the webview and changed cells/rows are highlighted.

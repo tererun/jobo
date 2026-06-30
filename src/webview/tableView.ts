@@ -2,14 +2,13 @@
  * Editable table view (Webview).
  *
  * Registers the `jobo.openTableView` command, which opens a Webview panel that
- * shows a single table in two modes:
+ * shows a single table in an always-editable grid:
  *
- *   - View: runs `SELECT * ... LIMIT n` (n = `jobo.defaultQueryLimit`)
- *     and renders the same ward-grid as the notebook renderer.
- *   - Edit: rows are identified by primary keys; cells can be edited
- *     (double-click), empty rows added, and rows marked for deletion. All edits
- *     accumulate as PENDING changes in the webview — nothing executes until the
- *     user confirms.
+ *   - Loads via `SELECT * ... LIMIT n` (n = `jobo.defaultQueryLimit`) and renders
+ *     the same ward-grid as the notebook renderer.
+ *   - Rows are identified by primary keys; cells can be edited (double-click),
+ *     empty rows added, and rows marked for deletion. All edits accumulate as
+ *     PENDING changes in the webview — nothing executes until the user confirms.
  *
  * Two-step Execute flow:
  *   1. The webview's top-right Execute button posts `{ type: "preview" }` with
@@ -363,14 +362,10 @@ class TableViewPanel {
 <body>
   <div class="jobo-toolbar">
     <span class="jobo-toolbar__title" id="title"></span>
-    <div class="jobo-modeswitch">
-      <button id="mode-view" type="button" class="active">View</button>
-      <button id="mode-edit" type="button">Edit</button>
-    </div>
     <span class="jobo-toolbar__spacer"></span>
-    <button id="add-row" type="button" class="jobo-btn jobo-btn--secondary" style="display:none">+ Add Row</button>
+    <button id="add-row" type="button" class="jobo-btn jobo-btn--secondary">+ Add Row</button>
     <button id="reload" type="button" class="jobo-btn jobo-btn--secondary">↻ Reload</button>
-    <button id="execute" type="button" class="jobo-btn" style="display:none">Execute ▸</button>
+    <button id="execute" type="button" class="jobo-btn">Execute ▸</button>
   </div>
   <div class="jobo-status" id="status"></div>
   <div class="jobo-scroll">

@@ -48,28 +48,6 @@ body {
   flex: 1 1 auto;
 }
 
-.jobo-modeswitch {
-  display: inline-flex;
-  border: 1px solid var(--jobo-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.jobo-modeswitch button {
-  border: none;
-  background: transparent;
-  color: var(--vscode-foreground);
-  padding: 3px 12px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 12px;
-}
-
-.jobo-modeswitch button.active {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
 button.jobo-btn {
   font-family: inherit;
   font-size: 12px;
@@ -330,4 +308,40 @@ tr.jobo-row--deleted td:not(.jobo-rowaction) {
   justify-content: flex-end;
   gap: 8px;
   border-top: 1px solid var(--jobo-border);
+}
+
+.jobo-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--vscode-menu-background, var(--vscode-editor-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--jobo-border));
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+.jobo-context-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.jobo-context-menu__item:hover:not(:disabled) {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, inherit);
+}
+
+.jobo-context-menu__item:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
