@@ -1,0 +1,15 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+eslint.config.js
+esbuild.js
+tsconfig.json
+**/*.map
+**/*.ts
+node_modules/**
+!dist/**
+!node_modules/node-sqlite3-wasm/dist/**
+!node_modules/node-sqlite3-wasm/package.json
+.git/**
+*.vsix

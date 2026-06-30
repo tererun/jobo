@@ -1,0 +1,311 @@
+{
+  "name": "jobo",
+  "displayName": "Jobo (条坊)",
+  "description": "PostgreSQL/MySQL/SQLite database client with SSH tunneling and notebook-style SQL execution.",
+  "version": "0.0.1",
+  "publisher": "tererun",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Notebooks"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onNotebook:jobo-notebook"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "jobo",
+          "title": "Jobo",
+          "icon": "media/jobo.svg"
+        }
+      ]
+    },
+    "views": {
+      "jobo": [
+        {
+          "id": "jobo.connections",
+          "name": "Connections",
+          "icon": "media/jobo.svg",
+          "contextualTitle": "Jobo Connections"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "jobo.connections",
+        "contents": "No database connections yet.\n[Add Connection](command:jobo.addConnection)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "jobo.addConnection",
+        "title": "Add Connection",
+        "category": "Jobo",
+        "icon": "$(add)"
+      },
+      {
+        "command": "jobo.editConnection",
+        "title": "Edit Connection",
+        "category": "Jobo",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "jobo.deleteConnection",
+        "title": "Delete Connection",
+        "category": "Jobo",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "jobo.connect",
+        "title": "Connect",
+        "category": "Jobo",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "jobo.disconnect",
+        "title": "Disconnect",
+        "category": "Jobo",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "jobo.refresh",
+        "title": "Refresh",
+        "category": "Jobo",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "jobo.openTableView",
+        "title": "Open Table",
+        "category": "Jobo",
+        "icon": "$(table)"
+      },
+      {
+        "command": "jobo.newNotebook",
+        "title": "New SQL Notebook",
+        "category": "Jobo",
+        "icon": "$(notebook)"
+      },
+      {
+        "command": "jobo.runNotebookOnConnection",
+        "title": "Run Notebook Against Connection",
+        "category": "Jobo",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "jobo.selectTargetConnection",
+        "title": "Select Target Connection",
+        "category": "Jobo",
+        "icon": "$(plug)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "jobo.addConnection",
+          "when": "view == jobo.connections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jobo.refresh",
+          "when": "view == jobo.connections",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "jobo.connect",
+          "when": "view == jobo.connections && viewItem == connection-disconnected",
+          "group": "inline@1"
+        },
+        {
+          "command": "jobo.disconnect",
+          "when": "view == jobo.connections && viewItem == connection-connected",
+          "group": "inline@1"
+        },
+        {
+          "command": "jobo.editConnection",
+          "when": "view == jobo.connections && viewItem =~ /^connection-/",
+          "group": "1_modify@1"
+        },
+        {
+          "command": "jobo.deleteConnection",
+          "when": "view == jobo.connections && viewItem =~ /^connection-/",
+          "group": "1_modify@2"
+        },
+        {
+          "command": "jobo.openTableView",
+          "when": "view == jobo.connections && viewItem == table",
+          "group": "inline@1"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "jobo.selectTargetConnection",
+          "when": "notebookType == jobo-notebook",
+          "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "jobo.connect",
+          "when": "false"
+        },
+        {
+          "command": "jobo.disconnect",
+          "when": "false"
+        },
+        {
+          "command": "jobo.editConnection",
+          "when": "false"
+        },
+        {
+          "command": "jobo.deleteConnection",
+          "when": "false"
+        },
+        {
+          "command": "jobo.openTableView",
+          "when": "false"
+        }
+      ]
+    },
+    "notebooks": [
+      {
+        "type": "jobo-notebook",
+        "displayName": "Jobo SQL Notebook",
+        "selector": [
+          {
+            "filenamePattern": "*.jobonb"
+          },
+          {
+            "filenamePattern": "*.sql"
+          }
+        ]
+      }
+    ],
+    "notebookRenderer": [
+      {
+        "id": "jobo-grid",
+        "displayName": "Jobo Result Grid",
+        "entrypoint": "./dist/renderer.js",
+        "mimeTypes": [
+          "x-application/jobo-grid"
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Jobo",
+      "properties": {
+        "jobo.connections": {
+          "type": "array",
+          "default": [],
+          "description": "Database connection definitions. Secrets (passwords/passphrases) are stored separately in SecretStorage.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique connection id."
+              },
+              "name": {
+                "type": "string",
+                "description": "Display name."
+              },
+              "driver": {
+                "type": "string",
+                "enum": [
+                  "postgres",
+                  "mysql",
+                  "sqlite"
+                ],
+                "description": "Database driver."
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "number"
+              },
+              "database": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string",
+                "description": "SQLite database file path."
+              },
+              "ssl": {
+                "type": "boolean"
+              },
+              "ssh": {
+                "type": "object",
+                "description": "Optional SSH tunnel configuration.",
+                "properties": {
+                  "configHost": {
+                    "type": "string",
+                    "description": "Host alias resolved from ~/.ssh/config."
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "number"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "identityFile": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "jobo.defaultQueryLimit": {
+          "type": "number",
+          "default": 200,
+          "description": "Default LIMIT applied when browsing a table in the table view."
+        },
+        "jobo.useSshConfig": {
+          "type": "boolean",
+          "default": true,
+          "description": "Resolve missing SSH settings from ~/.ssh/config when a configHost is specified."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "npm run typecheck && node esbuild.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "mysql2": "^3.22.5",
+    "node-sqlite3-wasm": "^0.8.59",
+    "pg": "^8.22.0",
+    "ssh-config": "^5.1.0",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/pg": "^8.20.0",
+    "@types/ssh2": "^1.15.5",
+    "@types/vscode": "^1.125.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.6.0",
+    "typescript": "^6.0.3"
+  }
+}
