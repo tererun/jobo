@@ -39,7 +39,7 @@
     "viewsWelcome": [
       {
         "view": "jobo.connections",
-        "contents": "No database connections yet.\n[Add Connection](command:jobo.addConnection)"
+        "contents": "No database connections yet.\n[Add Connection](command:jobo.addConnection)\n\nYou can also start writing SQL right away in a notebook.\n[New SQL Notebook](command:jobo.newNotebook)"
       }
     ],
     "commands": [
@@ -112,9 +112,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "jobo.refresh",
+          "command": "jobo.newNotebook",
           "when": "view == jobo.connections",
           "group": "navigation@2"
+        },
+        {
+          "command": "jobo.refresh",
+          "when": "view == jobo.connections",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
