@@ -90,7 +90,7 @@ table.jobo-grid__table {
 .jobo-grid__table td {
   border-right: 1px solid var(--vscode-panel-border, #8883);
   border-bottom: 1px solid var(--vscode-panel-border, #8883);
-  padding: 3px 10px;
+  padding: 8px 14px;
   text-align: left;
   white-space: pre;
   max-width: 480px;
