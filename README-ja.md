@@ -59,18 +59,18 @@ npm install
 
 1. アクティビティバーの **Jobo** アイコン → **Connections** ビューを開きます。
 2. ビュー右上の **＋ (Add Connection)**、またはウェルカム表示の **Add Connection** をクリックします。
-3. 入力ボックスに従って設定します。
-   - **Connection name**：表示名（必須）
-   - **Database driver**：PostgreSQL / MySQL・MariaDB / SQLite
+3. エディタタブに **接続フォーム** が開きます。各項目を入力し、**Add Connection** / **Save Changes** をクリックします。
+   - **Name**：表示名（必須）
+   - **Driver**：PostgreSQL / MySQL・MariaDB / SQLite（選択に応じてフォームの項目が切り替わります）
    - **SQLite の場合**：データベースファイルのパスを入力します。
-   - **PostgreSQL / MySQL の場合**：Host / Port / Database / User / Password / SSL の有無、続けて SSH トンネルの有無を入力します。
+   - **PostgreSQL / MySQL の場合**：Host / Port / Database / User / Password / SSL に加えて、必要なら SSH トンネルのセクションを入力します。
 4. パスワードやパスフレーズなどの秘密情報は VSCode の **SecretStorage** に安全に保存されます。その他の設定は `settings.json` の `jobo.connections` に保存されます。
 
 接続ノードの右クリック（コンテキストメニュー）から **Connect / Disconnect / Edit / Delete** を実行できます。接続済みノードを展開すると、データベース・スキーマ・テーブル・カラムを辿れます。
 
 ### 2. SSH トンネルを設定する
 
-接続追加時に「Connect through an SSH tunnel?」で **Yes** を選ぶと、SSH 設定を入力できます。
+接続フォームの **Connect through an SSH tunnel** にチェックを入れると、SSH 設定の入力欄が表示されます。
 
 - **`configHost`（`~/.ssh/config` のエイリアス）を使う場合**
   `~/.ssh/config` 内の `Host` 名を入力します。`HostName` / `User` / `Port` / `IdentityFile` / `ProxyJump` などの未入力項目が自動補完されます。個別の項目を入力すると、その項目だけ `~/.ssh/config` の値を上書きします。`~/.ssh/config` からの解決は設定 `jobo.useSshConfig`（既定: `true`）で切り替えられます。
