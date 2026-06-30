@@ -138,6 +138,10 @@ table.jobo-grid__table {
   font-style: italic;
   opacity: 0.8;
 }
+.jobo-grid__warn {
+  color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+  white-space: normal;
+}
 .jobo-grid__empty {
   padding: 14px;
   color: var(--vscode-descriptionForeground);
@@ -202,6 +206,8 @@ class WardGrid {
   private rows: unknown[][] = [];
   private rowCount = 0;
   private durationMs = 0;
+  private truncated = false;
+  private queryLimit = 0;
 
   private sortCol: number | null = null;
   private sortDir: SortDirection = "asc";
@@ -225,6 +231,8 @@ class WardGrid {
     this.rows = data.rows ?? [];
     this.rowCount = data.rowCount ?? this.rows.length;
     this.durationMs = data.durationMs ?? 0;
+    this.truncated = !!data.truncated;
+    this.queryLimit = data.queryLimit ?? 0;
     this.sortCol = null;
     this.sortDir = "asc";
     this.page = 0;
@@ -300,6 +308,13 @@ class WardGrid {
     stat.className = "jobo-grid__stat";
     this.statEl = stat;
     bar.appendChild(stat);
+
+    if (this.truncated && this.queryLimit > 0) {
+      const warn = document.createElement("span");
+      warn.className = "jobo-grid__warn";
+      warn.textContent = `Limited to ${this.queryLimit} rows — add LIMIT or raise jobo.defaultQueryLimit`;
+      bar.appendChild(warn);
+    }
 
     const spacer = document.createElement("span");
     spacer.className = "jobo-grid__spacer";

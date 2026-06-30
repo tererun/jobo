@@ -277,7 +277,7 @@
         "jobo.defaultQueryLimit": {
           "type": "number",
           "default": 200,
-          "description": "Default LIMIT applied when browsing a table in the table view."
+          "description": "Default row cap for notebook SELECT queries without LIMIT and for table view page size."
         },
         "jobo.useSshConfig": {
           "type": "boolean",

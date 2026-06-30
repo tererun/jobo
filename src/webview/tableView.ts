@@ -87,8 +87,10 @@ interface GridPayload {
   primaryKeys: string[];
   editable: boolean;
   table: TableRef;
-  /** Total number of rows in the table (for page-count display). */
+  /** Total rows for paging (exact or estimated). */
   total: number;
+  /** False when `total` comes from engine statistics. */
+  totalExact: boolean;
   /** Row offset of the first returned row. */
   offset: number;
   /** Page size used for this fetch. */
@@ -212,6 +214,8 @@ class TableViewPanel {
   private view: ViewState;
   /** Cached total row count; invalidated (undefined) on reload/commit. */
   private total: number | undefined;
+  /** Whether the cached total is exact or a catalog estimate. */
+  private totalExact = true;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -307,9 +311,11 @@ class TableViewPanel {
     }
 
     // Total count is cached; recomputed only when invalidated (reload/commit).
+    // Prefer fast catalog estimates over COUNT(*) on large tables.
     if (this.total === undefined) {
-      const countRes = await driver.query(`SELECT COUNT(*) FROM ${tableSql}`);
-      this.total = toCount(countRes.rows?.[0]?.[0]);
+      const counted = await driver.getTableRowCount(this.table);
+      this.total = counted.count;
+      this.totalExact = counted.exact;
     }
     const total = this.total;
 
@@ -334,6 +340,7 @@ class TableViewPanel {
       editable: primaryKeys.length > 0,
       table: this.table,
       total,
+      totalExact: this.totalExact,
       offset,
       limit,
       sort: this.view.sort,
@@ -479,18 +486,6 @@ function buildOrderBy(
     return ` ORDER BY ${cols}`;
   }
   return "";
-}
-
-/** Coerce a COUNT(*) cell (number | bigint | string) into a finite integer. */
-function toCount(value: unknown): number {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : 0;
-  }
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
 }
 
 /** Sanitize an inbound sort spec from the webview. */

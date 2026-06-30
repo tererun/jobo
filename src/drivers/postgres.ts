@@ -8,8 +8,10 @@ import type {
   QueryResult,
   TableRef,
   ColumnInfo,
+  TableRowCount,
   DriverConnectionOptions,
 } from "./driver";
+import { quoteTable } from "../sql/builder";
 
 export class PostgresDriver implements JoboDriver {
   private pool: Pool | undefined;
@@ -116,6 +118,24 @@ export class PostgresDriver implements JoboDriver {
     return res.rows.map((r) => String(r[0]));
   }
 
+  async getTableRowCount(table: TableRef): Promise<TableRowCount> {
+    const estRes = await this.query(
+      `SELECT c.reltuples::bigint
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relname = $1
+         AND ($2::text IS NULL OR n.nspname = $2)`,
+      [table.name, table.schema ?? null]
+    );
+    const estimate = Number(estRes.rows[0]?.[0]);
+    if (Number.isFinite(estimate) && estimate >= 0) {
+      return { count: Math.max(0, Math.round(estimate)), exact: false };
+    }
+    const tableSql = quoteTable(table, this);
+    const exactRes = await this.query(`SELECT COUNT(*) FROM ${tableSql}`);
+    return { count: toCount(exactRes.rows[0]?.[0]), exact: true };
+  }
+
   async execTransaction(statements: string[]): Promise<void> {
     const pool = this.requirePool();
     const client: PoolClient = await pool.connect();
@@ -159,4 +179,15 @@ export class PostgresDriver implements JoboDriver {
       this.pool = undefined;
     }
   }
+}
+
+function toCount(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }

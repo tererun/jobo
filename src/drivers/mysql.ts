@@ -8,8 +8,10 @@ import type {
   QueryResult,
   TableRef,
   ColumnInfo,
+  TableRowCount,
   DriverConnectionOptions,
 } from "./driver";
+import { quoteTable } from "../sql/builder";
 
 export class MysqlDriver implements JoboDriver {
   private pool: mysql.Pool | undefined;
@@ -121,6 +123,22 @@ export class MysqlDriver implements JoboDriver {
     return res.rows.map((r) => String(r[0]));
   }
 
+  async getTableRowCount(table: TableRef): Promise<TableRowCount> {
+    const schema = table.schema ?? this.options.database;
+    const estRes = await this.query(
+      `SELECT table_rows FROM information_schema.tables
+       WHERE table_name = ? AND (? IS NULL OR table_schema = ?)`,
+      [table.name, schema ?? null, schema ?? null]
+    );
+    const estimate = Number(estRes.rows[0]?.[0]);
+    if (Number.isFinite(estimate) && estimate >= 0) {
+      return { count: Math.max(0, Math.round(estimate)), exact: false };
+    }
+    const tableSql = quoteTable(table, this);
+    const exactRes = await this.query(`SELECT COUNT(*) FROM ${tableSql}`);
+    return { count: toCount(exactRes.rows[0]?.[0]), exact: true };
+  }
+
   async execTransaction(statements: string[]): Promise<void> {
     const pool = this.requirePool();
     const conn = await pool.getConnection();
@@ -164,4 +182,15 @@ export class MysqlDriver implements JoboDriver {
       this.pool = undefined;
     }
   }
+}
+
+function toCount(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }

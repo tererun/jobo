@@ -14,6 +14,7 @@ import * as vscode from "vscode";
 import type { ConnectionManager } from "../connections/manager";
 import type { JoboDriver, QueryResult } from "../drivers/driver";
 import { JOBO_GRID_MIME, type GridData } from "../shared/gridData";
+import { applyQueryLimit } from "../sql/queryLimit";
 
 const CONTROLLER_ID = "jobo-controller";
 const NOTEBOOK_TYPE = "jobo-notebook";
@@ -132,12 +133,23 @@ export class JoboNotebookController implements vscode.Disposable {
     }
 
     try {
-      const result = await driver.query(sql);
-      const grid = toGridData(result);
+      const limit = vscode.workspace
+        .getConfiguration("jobo")
+        .get<number>("defaultQueryLimit", 200);
+      const capped = applyQueryLimit(sql, limit);
+      const result = await driver.query(capped.sql);
+      const { rows, truncated } = trimToLimit(result.rows, capped);
+      const grid = toGridData(
+        { ...result, rows, rowCount: rows.length },
+        truncated ? { truncated: true, queryLimit: capped.limit } : undefined
+      );
       await exec.replaceOutput(
         new vscode.NotebookCellOutput([
           vscode.NotebookCellOutputItem.json(grid, JOBO_GRID_MIME),
-          vscode.NotebookCellOutputItem.text(toTextFallback(result), "text/plain"),
+          vscode.NotebookCellOutputItem.text(
+            toTextFallback({ ...result, rows, rowCount: rows.length }, truncated, capped.limit),
+            "text/plain"
+          ),
         ])
       );
       exec.end(true, Date.now());
@@ -173,18 +185,38 @@ export class JoboNotebookController implements vscode.Disposable {
 }
 
 /** Map a driver QueryResult into the shared read-only grid payload. */
-function toGridData(result: QueryResult): GridData {
+function toGridData(
+  result: QueryResult,
+  opts?: { truncated?: boolean; queryLimit?: number }
+): GridData {
   return {
     columns: result.columns,
     rows: result.rows,
     rowCount: result.rowCount,
     durationMs: result.durationMs,
     editable: false,
+    truncated: opts?.truncated,
+    queryLimit: opts?.queryLimit,
   };
 }
 
+/** Drop the probe row fetched by applyQueryLimit. */
+function trimToLimit(
+  rows: unknown[][],
+  capped: ReturnType<typeof applyQueryLimit>
+): { rows: unknown[][]; truncated: boolean } {
+  if (!capped.applied || rows.length <= capped.limit) {
+    return { rows, truncated: false };
+  }
+  return { rows: rows.slice(0, capped.limit), truncated: true };
+}
+
 /** Compact tab-separated text rendering for the `text/plain` fallback. */
-function toTextFallback(result: QueryResult): string {
+function toTextFallback(
+  result: QueryResult,
+  truncated?: boolean,
+  queryLimit?: number
+): string {
   if (result.columns.length === 0) {
     return `${result.rowCount} row(s) affected in ${result.durationMs} ms`;
   }
@@ -198,8 +230,12 @@ function toTextFallback(result: QueryResult): string {
     result.rows.length > MAX_ROWS
       ? `\n… ${result.rows.length - MAX_ROWS} more row(s)`
       : "";
+  const limitNote =
+    truncated && queryLimit
+      ? `\n⚠ Results limited to ${queryLimit} rows (jobo.defaultQueryLimit). Add LIMIT or raise the setting for more.`
+      : "";
   const summary = `\n(${result.rowCount} row(s), ${result.durationMs} ms)`;
-  return `${header}\n${body}${more}${summary}`;
+  return `${header}\n${body}${more}${limitNote}${summary}`;
 }
 
 function formatCell(value: unknown): string {

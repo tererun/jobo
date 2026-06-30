@@ -42,8 +42,9 @@
     durationMs: 0,
     /** Page size (rows fetched per page) — mirrors the host LIMIT. */
     limit: 100,
-    /** Total rows in the table, reported by the host (COUNT(*)). */
+    /** Total rows for paging (exact or estimated). */
     total: 0,
+    totalExact: true,
     /** Row offset of the first row on the current page. */
     offset: 0,
     /** @type {RowModel[]} rows of the CURRENT page only */
@@ -110,6 +111,7 @@
     state.table = payload.table || state.table;
     state.durationMs = payload.durationMs || 0;
     state.total = payload.total || 0;
+    state.totalExact = payload.totalExact !== false;
     state.offset = payload.offset || 0;
     state.limit = payload.limit || state.limit;
     state.error = null;
@@ -266,8 +268,13 @@
       `<span>Table <strong>${escapeHtml(state.table.name)}</strong></span>`
     );
     parts.push(
-      `<span>${state.total} rows total · ${state.durationMs} ms</span>`
+      `<span>${state.totalExact ? "" : "~"}${state.total} rows total · ${state.durationMs} ms</span>`
     );
+    if (!state.totalExact) {
+      parts.push(
+        `<span class="jobo-status__pending">Row count is approximate (catalog estimate)</span>`
+      );
+    }
     const count = pendingCount();
     if (count > 0) {
       parts.push(

@@ -14,6 +14,13 @@ export interface TableRef {
   name: string;
 }
 
+/** Row count for a table — exact or a catalog/statistics estimate. */
+export interface TableRowCount {
+  count: number;
+  /** False when `count` comes from engine statistics (pg_class, etc.). */
+  exact: boolean;
+}
+
 /** Metadata about a single column. */
 export interface ColumnInfo {
   name: string;
@@ -69,6 +76,11 @@ export interface JoboDriver {
   listColumns(table: TableRef): Promise<ColumnInfo[]>;
   /** Primary key column names, used for row identification and WHERE clauses. */
   getPrimaryKeys(table: TableRef): Promise<string[]>;
+  /**
+   * Row count for pager UI. Prefer fast catalog estimates over `COUNT(*)` when
+   * the engine provides them; fall back to an exact count when needed.
+   */
+  getTableRowCount(table: TableRef): Promise<TableRowCount>;
   /** Execute multiple statements as a single transaction (commit/rollback). */
   execTransaction(statements: string[]): Promise<void>;
   /** Quote an identifier for this engine (PG/SQLite: ", MySQL: `). */
