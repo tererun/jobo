@@ -3,8 +3,8 @@
  *
  * Runs inside the Webview sandbox (no Node/vscode APIs; communicates with the
  * extension host only via postMessage). Responsibilities:
- *   - render the ward-grid in View and Edit modes
- *   - in edit mode: cell editing (double-click), add empty row, mark delete,
+ *   - render the ward-grid (always editable)
+ *   - cell editing (double-click), add empty row, mark delete,
  *     accumulating PENDING changes locally (highlighted, never auto-executed)
  *   - Step 1: the top-right Execute button asks the host to build SQL from the
  *     pending changes and opens a modal listing the generated statements
@@ -42,8 +42,6 @@
     rowCount: 0,
     durationMs: 0,
     limit: 0,
-    /** @type {"view"|"edit"} */
-    mode: "view",
     /** @type {RowModel[]} */
     rows: [],
     /** @type {number|null} */
@@ -61,8 +59,6 @@
   // --- DOM refs ----------------------------------------------------------
   const el = {
     title: document.getElementById("title"),
-    modeView: document.getElementById("mode-view"),
-    modeEdit: document.getElementById("mode-edit"),
     addRow: document.getElementById("add-row"),
     reload: document.getElementById("reload"),
     execute: document.getElementById("execute"),
@@ -219,13 +215,6 @@
       : "";
     el.title.innerHTML = `${schemaPart}${escapeHtml(state.table.name)}`;
 
-    el.modeView.classList.toggle("active", state.mode === "view");
-    el.modeEdit.classList.toggle("active", state.mode === "edit");
-
-    const editing = state.mode === "edit";
-    el.addRow.style.display = editing ? "" : "none";
-    el.execute.style.display = editing ? "" : "none";
-
     const count = pendingCount();
     el.execute.disabled = state.busy || count === 0;
     el.execute.textContent = count > 0 ? `Execute (${count}) ▸` : "Execute ▸";
@@ -243,18 +232,16 @@
         state.limit ? ` (up to ${state.limit})` : ""
       } · ${state.durationMs} ms</span>`
     );
-    if (state.mode === "edit") {
-      const count = pendingCount();
-      if (count > 0) {
-        parts.push(
-          `<span class="jobo-status__pending">Pending changes: ${count}</span>`
-        );
-      }
-      if (!state.editable) {
-        parts.push(
-          `<span class="jobo-status__pending">No primary key: existing rows can't be edited/deleted (insert only)</span>`
-        );
-      }
+    const count = pendingCount();
+    if (count > 0) {
+      parts.push(
+        `<span class="jobo-status__pending">Pending changes: ${count}</span>`
+      );
+    }
+    if (!state.editable) {
+      parts.push(
+        `<span class="jobo-status__pending">No primary key: existing rows can't be edited/deleted (insert only)</span>`
+      );
     }
     let html = parts.join("");
     if (state.error) {
@@ -273,7 +260,6 @@
       return;
     }
 
-    const editing = state.mode === "edit";
     const table = document.createElement("table");
     table.className = "jobo-table";
 
@@ -308,12 +294,10 @@
       htr.appendChild(th);
     });
 
-    if (editing) {
-      const act = document.createElement("th");
-      act.className = "jobo-rowaction";
-      act.textContent = "";
-      htr.appendChild(act);
-    }
+    const actHead = document.createElement("th");
+    actHead.className = "jobo-rowaction";
+    actHead.textContent = "";
+    htr.appendChild(actHead);
     thead.appendChild(htr);
     table.appendChild(thead);
 
@@ -324,6 +308,10 @@
       const tr = document.createElement("tr");
       if (row.isNew) tr.classList.add("jobo-row--new");
       if (row.isDeleted) tr.classList.add("jobo-row--deleted");
+      tr.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        showRowMenu(e, row);
+      });
 
       const num = document.createElement("td");
       num.className = "jobo-rownum";
@@ -343,7 +331,7 @@
         if (row.changedCols.has(colIdx)) {
           td.classList.add("jobo-cell--changed");
         }
-        if (editing && canEditCell(row, col)) {
+        if (canEditCell(row, col)) {
           td.classList.add("jobo-cell--editable");
           td.addEventListener("dblclick", () =>
             beginEdit(td, row, colIdx)
@@ -352,19 +340,17 @@
         tr.appendChild(td);
       });
 
-      if (editing) {
-        const act = document.createElement("td");
-        act.className = "jobo-rowaction";
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = row.isDeleted ? "↺" : "🗑";
-        btn.title = row.isDeleted ? "Undo delete" : "Mark row for deletion";
-        const deletable = row.isNew || state.editable;
-        btn.disabled = !deletable;
-        btn.addEventListener("click", () => toggleDelete(row));
-        act.appendChild(btn);
-        tr.appendChild(act);
-      }
+      const act = document.createElement("td");
+      act.className = "jobo-rowaction";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = row.isDeleted ? "↺" : "🗑";
+      btn.title = row.isDeleted ? "Undo delete" : "Mark row for deletion";
+      const deletable = row.isNew || state.editable;
+      btn.disabled = !deletable;
+      btn.addEventListener("click", () => toggleDelete(row));
+      act.appendChild(btn);
+      tr.appendChild(act);
 
       tbody.appendChild(tr);
     });
@@ -442,6 +428,71 @@
     render();
   }
 
+  // --- Row context menu --------------------------------------------------
+
+  /** @type {HTMLElement|null} */
+  let menuEl = null;
+
+  function closeRowMenu() {
+    if (!menuEl) return;
+    menuEl.remove();
+    menuEl = null;
+    document.removeEventListener("mousedown", onMenuOutside, true);
+    document.removeEventListener("keydown", onMenuKey, true);
+    document.removeEventListener("scroll", closeRowMenu, true);
+    window.removeEventListener("blur", closeRowMenu);
+    window.removeEventListener("resize", closeRowMenu);
+  }
+
+  function onMenuOutside(e) {
+    if (menuEl && !menuEl.contains(e.target)) closeRowMenu();
+  }
+
+  function onMenuKey(e) {
+    if (e.key === "Escape") closeRowMenu();
+  }
+
+  function showRowMenu(event, row) {
+    closeRowMenu();
+    const deletable = row.isNew || state.editable;
+
+    const menu = document.createElement("div");
+    menu.className = "jobo-context-menu";
+
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "jobo-context-menu__item";
+    item.textContent = row.isDeleted ? "↺ 削除を取り消す" : "🗑 行を削除";
+    item.disabled = !deletable;
+    if (!deletable) {
+      item.title = "主キーが無いため既存行は削除できません";
+    }
+    item.addEventListener("click", () => {
+      closeRowMenu();
+      if (deletable) toggleDelete(row);
+    });
+    menu.appendChild(item);
+
+    document.body.appendChild(menu);
+    menuEl = menu;
+
+    const rect = menu.getBoundingClientRect();
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x + rect.width > window.innerWidth) x = window.innerWidth - rect.width - 4;
+    if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 4;
+    menu.style.left = `${Math.max(0, x)}px`;
+    menu.style.top = `${Math.max(0, y)}px`;
+
+    setTimeout(() => {
+      document.addEventListener("mousedown", onMenuOutside, true);
+      document.addEventListener("keydown", onMenuKey, true);
+      document.addEventListener("scroll", closeRowMenu, true);
+      window.addEventListener("blur", closeRowMenu);
+      window.addEventListener("resize", closeRowMenu);
+    }, 0);
+  }
+
   function addRow() {
     const cells = state.columns.map(() => null);
     state.rows.push({
@@ -468,12 +519,6 @@
       state.sortDir = "asc";
     }
     rebuildOrder();
-    render();
-  }
-
-  function setMode(mode) {
-    if (state.mode === mode) return;
-    state.mode = mode;
     render();
   }
 
@@ -566,8 +611,6 @@
 
   // --- Wire up controls --------------------------------------------------
 
-  el.modeView.addEventListener("click", () => setMode("view"));
-  el.modeEdit.addEventListener("click", () => setMode("edit"));
   el.addRow.addEventListener("click", addRow);
   el.reload.addEventListener("click", () => {
     state.busy = true;
